@@ -1,0 +1,204 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+#Libraries used
+```{r}
+#install.packages("caTools")
+#install.packages("randomForest")
+#install.packages("rpart")
+#install.packages("rpart.plot")
+#install.packages("xgboost")
+#install.packages("BBmisc")
+#install.packages('DiagrammeR')
+library(xgboost)
+library(DiagrammeR)
+library(BBmisc)
+library(readr)
+library("corrplot")
+library("caTools")
+library(randomForest)
+library("rpart")
+library(rpart.plot)
+```
+
+Reading the dataset
+
+```{r}
+dataset <- read.csv(file="/cloud/project/heart_failure_clinical_records_dataset.csv")
+summary(dataset)
+#head(dataset)
+```
+Correlation Values before normalization,
+
+```{r}
+cor_values <- cor(dataset)
+#cor_values
+corrplot(cor_values, method="color")
+pairs(dataset)
+```
+
+
+```{r}
+colSums(is.na(dataset))
+```
+
+
+#################### XGBooster Classifier ##################
+
+```{r}
+smp_size <- floor(0.75 * nrow(dataset))
+set.seed(123)
+train_ind <- sample(seq_len(nrow(dataset)), size = smp_size)
+train <- dataset[train_ind, ]
+test <- dataset[-train_ind, ]
+dim(train)
+dim(test)
+```
+
+```{r}
+bstDense1 <- xgboost(data = as.matrix(train[1:12]), label = train$DEATH_EVENT,
+max.depth = 2, eta = 1, nthread = 2, nrounds = 3, objective = "binary:logistic")
+pred <- predict(bstDense1, as.matrix(test[1:12]))
+print(length(pred))
+print(head(pred))
+prediction <- as.numeric(pred > 0.5)
+print(head(prediction))
+err <- mean(as.numeric(pred > 0.5) != test$DEATH_EVENT)
+print(paste("test-error=", err))
+cv.res <- xgb.cv(data = as.matrix(train[1:12]), label = train$DEATH_EVENT, nfold = 5, nrounds = 3, objective = "binary:logistic")
+xgb.plot.multi.trees(model = bstDense1, feature_names = colnames(train[1:12]), use.names='check', features_keep = 12)
+importance_matrix <- xgb.importance(colnames(train[1:12]), model = bstDense1)
+xgb.plot.importance(importance_matrix)
+xgb.plot.deepness(model = bstDense1)
+
+```
+
+
+```{r}
+acc <- mean(as.numeric(pred > 0.5) == test$DEATH_EVENT)
+print(paste("test-accuracy=", acc))
+```
+
+####################### Random Forest Model ##################### 
+```{r}
+dataset$anaemia <- factor(dataset$anaemia)
+dataset$diabetes <- factor(dataset$diabetes)
+dataset$high_blood_pressure <- factor(dataset$high_blood_pressure)
+dataset$sex <- factor(dataset$sex)
+dataset$smoking <- factor(dataset$smoking)
+dataset$DEATH_EVENT <- factor(dataset$DEATH_EVENT)
+```
+
+
+#train and test split
+
+```{r}
+set.seed(121)
+sample <- sample.split(dataset, SplitRatio = .8)
+train_data <- subset(dataset, sample == TRUE)
+test_data  <- subset(dataset, sample == FALSE)
+dim(train_data)
+dim(test_data)
+```
+
+#Model
+```{r}
+#?randomForest()
+rf_model <- randomForest(DEATH_EVENT ~ ., data=train_data)
+```
+
+#Predictions
+```{r}
+rfMod_pred <- predict(rf_model, newdata=test_data[-13])
+```
+
+#Importance of Predictors
+```{r}
+importance(rf_model)
+```
+  Based on the importance values of the random forest model it can be described that, since the Mean Decrease in Gini is higher for ejection fraction, serum creatinine, time implies that they have lower Gini values by which those 3 predictors play a major role in predicting the death event in case of a heart failure.
+
+```{r}
+tm <- rpart(DEATH_EVENT ~., train_data, method = "class")
+rpart.plot(tm, tweak = 1.6)
+```
+
+```{r}
+print(rf_model)
+plot(rf_model)
+```
+
+ The black curve represents the OOB (out of bag score) which is useful for validating the random forest model, is computed by taking the data that is not necessarily used in the analysis of the model while if we use validation score it only uses the sample of data within the training set. The green curve represents the training error for predicting the patient as dead while the red curve represents the training error for predicting the patient as not death.
+ 
+#Evaluation
+```{r}
+rfMod_cf <- table(test_data[,13],rfMod_pred)
+rfMod_cf
+```
+
+
+```{r}
+accuracy <- (48+13)/(48+13+6+2)
+accuracy
+```
+  The accuracy obtained using random forest model is 88.40%.
+
+
+#################### KNN Model ######################
+
+```{r}
+set.seed(1994)
+sample <- sample.split(dataset_norm, SplitRatio = .8)
+train_data <- subset(dataset_norm, sample == TRUE)
+test_data  <- subset(dataset_norm, sample == FALSE)
+train_data_x = train_data[,-13]
+test_data_x = test_data[,-13]
+train_dir = train_data$DEATH_EVENT
+```
+
+K = 1    
+```{r}
+set.seed(1994)
+knn_pred <- knn(train = train_data_x, test = test_data_x, cl = train_dir, k = 1)
+table(knn_pred, test_data$DEATH_EVENT)
+Accuracy = mean(knn_pred == test_data$DEATH_EVENT)
+Accuracy
+Test_Error = mean(knn_pred != test_data$DEATH_EVENT)
+Test_Error
+```
+
+K = 3 
+```{r}
+set.seed(1994)
+knn_pred <- knn(train = train_data_x, test = test_data_x, cl = train_dir, k = 3)
+table(knn_pred, test_data$DEATH_EVENT)
+Accuracy = mean(knn_pred == test_data$DEATH_EVENT)
+Accuracy
+Test_Error = mean(knn_pred != test_data$DEATH_EVENT)
+Test_Error
+```
+
+K = 5
+```{r}
+
+set.seed(1994)
+knn_pred <- knn(train = train_data_x, test = test_data_x, cl = train_dir, k = 5)
+table(knn_pred, test_data$DEATH_EVENT)
+Accuracy = mean(knn_pred == test_data$DEATH_EVENT)
+Accuracy
+Test_Error = mean(knn_pred != test_data$DEATH_EVENT)
+Test_Error
+```
+K=8
+```{r}
+
+set.seed(1994)
+knn_pred <- knn(train = train_data_x, test = test_data_x, cl = train_dir, k = 8)
+table(knn_pred, test_data$DEATH_EVENT)
+Accuracy = mean(knn_pred == test_data$DEATH_EVENT)
+Accuracy
+Test_Error = mean(knn_pred != test_data$DEATH_EVENT)
+Test_Error
+```
+
